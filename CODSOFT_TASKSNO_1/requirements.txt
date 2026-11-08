@@ -1,0 +1,12 @@
+# Python GUI To-Do List Application
+# Project Asset: cf772cd9-6178-4b38-b3a8-ee99efa59dc3
+#
+# This application is built using Python's standard library (tkinter, dataclasses,
+# json, argparse, unittest, ctypes, csv).
+# No external third-party dependencies are required for core execution.
+#
+# Optional development/quality tooling:
+flake8>=6.0.0
+black>=23.0.0
+mypy>=1.0.0
+pytest>=7.0.0
