@@ -16,10 +16,10 @@
     "priority": "High",
     "category": "Work",
     "due_date": null,
-    "completed": true,
+    "completed": false,
     "id": "d990ed63-7e3b-4877-bb22-e494207dbe94",
     "created_at": "2026-11-08T15:37:38",
-    "completed_at": "2026-11-08T15:53:55"
+    "completed_at": null
   },
   {
     "title": "Organize development workspace",
@@ -27,10 +27,10 @@
     "priority": "Medium",
     "category": "General",
     "due_date": null,
-    "completed": false,
+    "completed": true,
     "id": "0278715d-3e03-444f-a2da-84fded621c9b",
     "created_at": "2026-11-08T15:37:38",
-    "completed_at": null
+    "completed_at": "2026-11-08T16:01:12"
   },
   {
     "title": "dsaprac",
