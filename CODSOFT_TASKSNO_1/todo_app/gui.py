@@ -1,10 +1,10 @@
 """
-To-Do List Application - GUI Module
+To-Do List Application - Modern GUI Module
 Reference Asset: cf772cd9-6178-4b38-b3a8-ee99efa59dc3
 
 Production-grade Graphical User Interface built with Python's standard tkinter
-and ttk libraries. Features modern layout, responsive filtering, live stats,
-dialog editing, and keyboard shortcuts.
+and ttk libraries. Features modern card-based task rendering, Dark/Light mode,
+live stat widgets, priority pills, date badges, search, and keyboard shortcuts.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import sys
 import tkinter as tk
 from datetime import date, datetime, timedelta
 from tkinter import filedialog, messagebox, ttk
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from .manager import TaskManager, ValidationError
 from .models import Category, Priority, Task
@@ -27,29 +27,194 @@ def enable_high_dpi_awareness() -> None:
     """Enable high-DPI scaling on Windows systems for crisp fonts."""
     if sys.platform.startswith("win"):
         try:
-            # Per-monitor DPI awareness (Windows 8.1+)
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except Exception:
             try:
-                # System DPI awareness (Windows Vista+)
                 ctypes.windll.user32.SetProcessDPIAware()
             except Exception:
                 pass
 
 
-class EditTaskDialog(tk.Toplevel):
-    """Modal dialog for editing an existing task's properties."""
+# ---------------------------------------------------------------------------
+# Theme Palettes
+# ---------------------------------------------------------------------------
 
-    def __init__(self, parent: tk.Widget, task: Task, manager: TaskManager) -> None:
+THEMES: Dict[str, Dict[str, str]] = {
+    "light": {
+        "bg_app": "#F1F5F9",          # Soft slate light background
+        "bg_header": "#0F172A",       # Deep navy hero header
+        "fg_header_title": "#FFFFFF",
+        "fg_header_sub": "#94A3B8",
+        "bg_card": "#FFFFFF",         # Pure white cards
+        "bg_card_hover": "#F8FAFC",   # Hover subtle tint
+        "bg_card_done": "#F8FAFC",    # Completed task background
+        "border": "#E2E8F0",          # Crisp border
+        "border_focus": "#3B82F6",    # Blue focus outline
+        "fg_primary": "#0F172A",      # High contrast dark text
+        "fg_secondary": "#475569",    # Medium contrast secondary text
+        "fg_muted": "#94A3B8",        # Subtle text
+        "accent": "#2563EB",          # Royal blue primary accent
+        "accent_hover": "#1D4ED8",
+        "accent_text": "#FFFFFF",
+        # Stat cards
+        "stat_card_bg": "#1E293B",
+        "stat_label": "#94A3B8",
+        "stat_num": "#FFFFFF",
+        # Priority pill badges
+        "pri_high_bg": "#FEE2E2",
+        "pri_high_fg": "#DC2626",
+        "pri_med_bg": "#FEF3C7",
+        "pri_med_fg": "#D97706",
+        "pri_low_bg": "#DCFCE7",
+        "pri_low_fg": "#16A34A",
+        # Category badge
+        "cat_bg": "#E2E8F0",
+        "cat_fg": "#334155",
+        # Due date badge
+        "due_normal_bg": "#F1F5F9",
+        "due_normal_fg": "#475569",
+        "due_overdue_bg": "#FEE2E2",
+        "due_overdue_fg": "#B91C1C",
+        "due_today_bg": "#FEF3C7",
+        "due_today_fg": "#B45309",
+        # Checkbox
+        "check_border": "#94A3B8",
+        "check_active_bg": "#10B981",
+        "check_active_fg": "#FFFFFF",
+    },
+    "dark": {
+        "bg_app": "#0F172A",          # Deep midnight background
+        "bg_header": "#020617",       # Pure obsidian hero header
+        "fg_header_title": "#F8FAFC",
+        "fg_header_sub": "#64748B",
+        "bg_card": "#1E293B",         # Rich slate card
+        "bg_card_hover": "#273549",   # Slightly lighter slate hover
+        "bg_card_done": "#182234",    # Muted slate for completed
+        "border": "#334155",          # Subtle dark border
+        "border_focus": "#60A5FA",
+        "fg_primary": "#F8FAFC",      # Bright text
+        "fg_secondary": "#CBD5E1",    # Soft gray text
+        "fg_muted": "#64748B",        # Dim text
+        "accent": "#3B82F6",          # Vibrant blue
+        "accent_hover": "#60A5FA",
+        "accent_text": "#FFFFFF",
+        # Stat cards
+        "stat_card_bg": "#0B132B",
+        "stat_label": "#64748B",
+        "stat_num": "#F8FAFC",
+        # Priority pill badges
+        "pri_high_bg": "#450A0A",
+        "pri_high_fg": "#F87171",
+        "pri_med_bg": "#451A03",
+        "pri_med_fg": "#FBBF24",
+        "pri_low_bg": "#064E3B",
+        "pri_low_fg": "#34D399",
+        # Category badge
+        "cat_bg": "#334155",
+        "cat_fg": "#E2E8F0",
+        # Due date badge
+        "due_normal_bg": "#334155",
+        "due_normal_fg": "#CBD5E1",
+        "due_overdue_bg": "#450A0A",
+        "due_overdue_fg": "#FCA5A5",
+        "due_today_bg": "#451A03",
+        "due_today_fg": "#FDE68A",
+        # Checkbox
+        "check_border": "#64748B",
+        "check_active_bg": "#059669",
+        "check_active_fg": "#FFFFFF",
+    },
+}
+
+
+class ModernButton(tk.Canvas):
+    """Custom anti-aliased styled rounded button for polished UX."""
+
+    def __init__(
+        self,
+        parent: tk.Widget,
+        text: str,
+        command: Any = None,
+        bg: str = "#2563EB",
+        fg: str = "#FFFFFF",
+        hover_bg: str = "#1D4ED8",
+        font: tuple = ("Segoe UI", 9, "bold"),
+        width: int = 100,
+        height: int = 32,
+        radius: int = 8,
+        cursor: str = "hand2",
+    ) -> None:
+        super().__init__(
+            parent,
+            width=width,
+            height=height,
+            bg=parent["bg"] if "bg" in parent.keys() else "#FFFFFF",
+            highlightthickness=0,
+            cursor=cursor,
+        )
+        self.text = text
+        self.command = command
+        self.btn_bg = bg
+        self.btn_fg = fg
+        self.hover_bg = hover_bg
+        self.btn_font = font
+        self.btn_width = width
+        self.btn_height = height
+        self.radius = radius
+
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+        self.bind("<Button-1>", self._on_click)
+
+        self._draw(self.btn_bg)
+
+    def _draw(self, fill_color: str) -> None:
+        self.delete("all")
+        w, h, r = self.btn_width, self.btn_height, self.radius
+        # Draw rounded rectangle
+        self.create_arc((0, 0, 2 * r, 2 * r), start=90, extent=90, fill=fill_color, outline=fill_color)
+        self.create_arc((w - 2 * r, 0, w, 2 * r), start=0, extent=90, fill=fill_color, outline=fill_color)
+        self.create_arc((0, h - 2 * r, 2 * r, h), start=180, extent=90, fill=fill_color, outline=fill_color)
+        self.create_arc((w - 2 * r, h - 2 * r, w, h), start=270, extent=90, fill=fill_color, outline=fill_color)
+        self.create_rectangle((r, 0, w - r, h), fill=fill_color, outline=fill_color)
+        self.create_rectangle((0, r, w, h - r), fill=fill_color, outline=fill_color)
+        # Draw text
+        self.create_text(w / 2, h / 2, text=self.text, fill=self.btn_fg, font=self.btn_font)
+
+    def _on_enter(self, _event: tk.Event) -> None:
+        self._draw(self.hover_bg)
+
+    def _on_leave(self, _event: tk.Event) -> None:
+        self._draw(self.btn_bg)
+
+    def _on_click(self, _event: tk.Event) -> None:
+        if self.command:
+            self.command()
+
+    def update_colors(self, bg: str, fg: str, hover_bg: str, parent_bg: str) -> None:
+        """Update colors dynamically when theme toggles."""
+        self.configure(bg=parent_bg)
+        self.btn_bg = bg
+        self.btn_fg = fg
+        self.hover_bg = hover_bg
+        self._draw(self.btn_bg)
+
+
+class EditTaskDialog(tk.Toplevel):
+    """Modal dialog with styled fields for editing an existing task."""
+
+    def __init__(self, parent: tk.Widget, task: Task, manager: TaskManager, theme_mode: str = "light") -> None:
         super().__init__(parent)
         self.parent = parent
         self.task = task
         self.manager = manager
+        self.theme = THEMES[theme_mode]
         self.saved = False
 
-        self.title("Edit Task")
-        self.geometry("480x360")
-        self.minsize(420, 320)
+        self.title("Edit Task Details")
+        self.geometry("520x420")
+        self.minsize(460, 380)
+        self.configure(bg=self.theme["bg_card"])
         self.transient(parent)
         self.grab_set()
 
@@ -57,108 +222,196 @@ class EditTaskDialog(tk.Toplevel):
         self._center_window()
 
     def _center_window(self) -> None:
-        """Center the dialog over the parent window."""
         self.update_idletasks()
-        pw = self.parent.winfo_width()
-        ph = self.parent.winfo_height()
-        px = self.parent.winfo_rootx()
-        py = self.parent.winfo_rooty()
-
-        w = self.winfo_width()
-        h = self.winfo_height()
+        pw, ph = self.parent.winfo_width(), self.parent.winfo_height()
+        px, py = self.parent.winfo_rootx(), self.parent.winfo_rooty()
+        w, h = self.winfo_width(), self.winfo_height()
         x = px + max(0, (pw - w) // 2)
         y = py + max(0, (ph - h) // 2)
         self.geometry(f"+{x}+{y}")
 
     def _build_ui(self) -> None:
-        container = ttk.Frame(self, padding="16 16 16 16")
+        t = self.theme
+        container = tk.Frame(self, bg=t["bg_card"], padx=24, pady=20)
         container.pack(fill=tk.BOTH, expand=True)
 
-        # Title
-        ttk.Label(container, text="Task Title *:", font=("Segoe UI", 9, "bold")).grid(
-            row=0, column=0, sticky=tk.W, pady=(0, 4)
-        )
+        # Header Title
+        tk.Label(
+            container,
+            text="Edit Task",
+            font=("Segoe UI", 14, "bold"),
+            bg=t["bg_card"],
+            fg=t["fg_primary"],
+        ).pack(anchor=tk.W, pady=(0, 14))
+
+        # Title Field
+        tk.Label(
+            container,
+            text="Task Title *",
+            font=("Segoe UI", 9, "bold"),
+            bg=t["bg_card"],
+            fg=t["fg_secondary"],
+        ).pack(anchor=tk.W, pady=(0, 4))
         self.title_var = tk.StringVar(value=self.task.title)
-        self.title_entry = ttk.Entry(container, textvariable=self.title_var, font=("Segoe UI", 10))
-        self.title_entry.grid(row=1, column=0, columnspan=2, sticky=tk.EW, pady=(0, 10))
-
-        # Description
-        ttk.Label(container, text="Description / Notes:", font=("Segoe UI", 9)).grid(
-            row=2, column=0, sticky=tk.W, pady=(0, 4)
+        self.title_entry = tk.Entry(
+            container,
+            textvariable=self.title_var,
+            font=("Segoe UI", 10),
+            bg=t["bg_app"],
+            fg=t["fg_primary"],
+            insertbackground=t["fg_primary"],
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=t["border"],
+            highlightcolor=t["accent"],
         )
-        self.desc_text = tk.Text(container, height=4, font=("Segoe UI", 9), wrap=tk.WORD)
+        self.title_entry.pack(fill=tk.X, ipady=6, pady=(0, 12))
+
+        # Description / Notes
+        tk.Label(
+            container,
+            text="Notes / Description",
+            font=("Segoe UI", 9, "bold"),
+            bg=t["bg_card"],
+            fg=t["fg_secondary"],
+        ).pack(anchor=tk.W, pady=(0, 4))
+        self.desc_text = tk.Text(
+            container,
+            height=3,
+            font=("Segoe UI", 9),
+            bg=t["bg_app"],
+            fg=t["fg_primary"],
+            insertbackground=t["fg_primary"],
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=t["border"],
+            highlightcolor=t["accent"],
+            wrap=tk.WORD,
+        )
         self.desc_text.insert("1.0", self.task.description or "")
-        self.desc_text.grid(row=3, column=0, columnspan=2, sticky=tk.EW, pady=(0, 10))
+        self.desc_text.pack(fill=tk.X, pady=(0, 12))
 
-        # Priority & Category
-        row_frame = ttk.Frame(container)
-        row_frame.grid(row=4, column=0, columnspan=2, sticky=tk.EW, pady=(0, 10))
+        # Priority & Category row
+        row = tk.Frame(container, bg=t["bg_card"])
+        row.pack(fill=tk.X, pady=(0, 12))
 
-        ttk.Label(row_frame, text="Priority:").pack(side=tk.LEFT, padx=(0, 6))
+        # Priority
+        col1 = tk.Frame(row, bg=t["bg_card"])
+        col1.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        tk.Label(col1, text="Priority", font=("Segoe UI", 9, "bold"), bg=t["bg_card"], fg=t["fg_secondary"]).pack(anchor=tk.W, pady=(0, 4))
         self.priority_var = tk.StringVar(value=self.task.priority.value)
         pri_combo = ttk.Combobox(
-            row_frame,
+            col1,
             textvariable=self.priority_var,
             values=[p.value for p in Priority],
             state="readonly",
-            width=10,
         )
-        pri_combo.pack(side=tk.LEFT, padx=(0, 16))
+        pri_combo.pack(fill=tk.X)
 
-        ttk.Label(row_frame, text="Category:").pack(side=tk.LEFT, padx=(0, 6))
+        # Category
+        col2 = tk.Frame(row, bg=t["bg_card"])
+        col2.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(col2, text="Category", font=("Segoe UI", 9, "bold"), bg=t["bg_card"], fg=t["fg_secondary"]).pack(anchor=tk.W, pady=(0, 4))
         self.category_var = tk.StringVar(value=self.task.category)
         cat_combo = ttk.Combobox(
-            row_frame,
+            col2,
             textvariable=self.category_var,
             values=self.manager.get_categories(),
-            width=12,
         )
-        cat_combo.pack(side=tk.LEFT)
+        cat_combo.pack(fill=tk.X)
 
         # Due Date
-        date_frame = ttk.Frame(container)
-        date_frame.grid(row=5, column=0, columnspan=2, sticky=tk.EW, pady=(0, 16))
+        tk.Label(
+            container,
+            text="Due Date (YYYY-MM-DD)",
+            font=("Segoe UI", 9, "bold"),
+            bg=t["bg_card"],
+            fg=t["fg_secondary"],
+        ).pack(anchor=tk.W, pady=(0, 4))
 
-        ttk.Label(date_frame, text="Due Date (YYYY-MM-DD):").pack(side=tk.LEFT, padx=(0, 6))
+        date_row = tk.Frame(container, bg=t["bg_card"])
+        date_row.pack(fill=tk.X, pady=(0, 18))
+
         self.date_var = tk.StringVar(value=self.task.due_date or "")
-        date_entry = ttk.Entry(date_frame, textvariable=self.date_var, width=14)
-        date_entry.pack(side=tk.LEFT, padx=(0, 8))
+        self.date_entry = tk.Entry(
+            date_row,
+            textvariable=self.date_var,
+            font=("Segoe UI", 10),
+            bg=t["bg_app"],
+            fg=t["fg_primary"],
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=t["border"],
+            highlightcolor=t["accent"],
+            width=18,
+        )
+        self.date_entry.pack(side=tk.LEFT, ipady=4, padx=(0, 8))
 
-        clear_date_btn = ttk.Button(date_frame, text="Clear Date", command=lambda: self.date_var.set(""))
-        clear_date_btn.pack(side=tk.LEFT)
+        tk.Button(
+            date_row,
+            text="Clear Date",
+            command=lambda: self.date_var.set(""),
+            font=("Segoe UI", 8),
+            bg=t["bg_app"],
+            fg=t["fg_secondary"],
+            relief="flat",
+            padx=8,
+            pady=3,
+        ).pack(side=tk.LEFT)
 
-        # Buttons
-        btn_frame = ttk.Frame(container)
-        btn_frame.grid(row=6, column=0, columnspan=2, sticky=tk.E)
+        # Action Buttons
+        btn_row = tk.Frame(container, bg=t["bg_card"])
+        btn_row.pack(fill=tk.X, pady=(10, 0))
 
-        cancel_btn = ttk.Button(btn_frame, text="Cancel", command=self.destroy)
-        cancel_btn.pack(side=tk.RIGHT, padx=(8, 0))
+        tk.Button(
+            btn_row,
+            text="Cancel",
+            command=self.destroy,
+            font=("Segoe UI", 9),
+            bg=t["bg_app"],
+            fg=t["fg_secondary"],
+            relief="flat",
+            padx=14,
+            pady=6,
+            cursor="hand2",
+        ).pack(side=tk.RIGHT, padx=(8, 0))
 
-        save_btn = ttk.Button(btn_frame, text="Save Changes", command=self._save)
-        save_btn.pack(side=tk.RIGHT)
+        tk.Button(
+            btn_row,
+            text="Save Changes",
+            command=self._save,
+            font=("Segoe UI", 9, "bold"),
+            bg=t["accent"],
+            fg=t["accent_text"],
+            activebackground=t["accent_hover"],
+            activeforeground=t["accent_text"],
+            relief="flat",
+            padx=18,
+            pady=6,
+            cursor="hand2",
+        ).pack(side=tk.RIGHT)
 
-        container.columnconfigure(0, weight=1)
         self.title_entry.focus_set()
 
     def _save(self) -> None:
-        new_title = self.title_var.get().strip()
-        if not new_title:
+        title = self.title_var.get().strip()
+        if not title:
             messagebox.showwarning("Validation Error", "Task title cannot be empty.", parent=self)
             self.title_entry.focus_set()
             return
 
-        new_desc = self.desc_text.get("1.0", tk.END).strip()
-        new_pri = self.priority_var.get()
-        new_cat = self.category_var.get().strip() or Category.OTHER.value
+        desc = self.desc_text.get("1.0", tk.END).strip()
+        priority = self.priority_var.get()
+        category = self.category_var.get().strip() or Category.OTHER.value
         due_val = self.date_var.get().strip() or None
 
         try:
             self.manager.update_task(
                 self.task.id,
-                title=new_title,
-                description=new_desc,
-                priority=new_pri,
-                category=new_cat,
+                title=title,
+                description=desc,
+                priority=priority,
+                category=category,
                 due_date=due_val,
                 clear_due_date=(due_val is None),
             )
@@ -169,389 +422,822 @@ class EditTaskDialog(tk.Toplevel):
 
 
 class TodoAppGUI(tk.Tk):
-    """Main Application Window for the Python GUI To-Do List."""
+    """Modern Production-Ready To-Do List Application GUI."""
 
     def __init__(self, manager: Optional[TaskManager] = None) -> None:
         enable_high_dpi_awareness()
         super().__init__()
 
         self.manager = manager or TaskManager()
+        self.theme_mode = "light"  # Default light, toggleable to "dark"
+        self.theme = THEMES[self.theme_mode]
 
-        # Window configuration
-        self.title(f"Task Master - To-Do List Application [{ASSET_REFERENCE[:8]}]")
-        self.geometry("980x680")
-        self.minsize(820, 540)
+        # Window Setup
+        self.title("TaskMaster Pro — Productivity & Task Management")
+        self.geometry("1060x740")
+        self.minsize(880, 580)
+        self.configure(bg=self.theme["bg_app"])
 
-        # Active filter states
-        self.status_filter = tk.StringVar(value="all")
-        self.category_filter = tk.StringVar(value="all")
-        self.sort_by = tk.StringVar(value="created_desc")
-        self.search_query = tk.StringVar()
+        # Filter and Search State
+        self.current_status_filter = "all"
+        self.current_category_filter = "All"
+        self.current_sort_by = "Newest First"
+        self.search_text = tk.StringVar()
+        self.selected_priority_input = "Medium"
 
-        self._configure_styles()
+        # UI Element references for dynamic theme updates
+        self.theme_elements: List[Any] = []
+        self.filter_buttons: Dict[str, tk.Button] = {}
+
+        self._configure_ttk_styles()
         self._build_ui()
         self._bind_shortcuts()
-        self.refresh_task_list()
+        self.refresh_task_cards()
 
-    def _configure_styles(self) -> None:
-        """Configure ttk styles with a clean, modern palette."""
+    def _configure_ttk_styles(self) -> None:
         style = ttk.Style(self)
         try:
             style.theme_use("clam")
         except Exception:
             pass
-
-        # Color constants
-        self.c_primary = "#2563EB"       # Modern blue
-        self.c_bg = "#F8FAFC"            # Light slate background
-        self.c_card = "#FFFFFF"          # Pure white cards
-        self.c_text = "#1E293B"          # Dark slate
-        self.c_muted = "#64748B"         # Cool gray
-        self.c_success = "#16A34A"       # Green
-        self.c_danger = "#DC2626"        # Red
-        self.c_warning = "#D97706"       # Amber
-        self.c_border = "#E2E8F0"        # Light border
-
-        self.configure(bg=self.c_bg)
-
-        # General font definitions
-        style.configure(".", font=("Segoe UI", 9), background=self.c_bg, foreground=self.c_text)
-        style.configure("TFrame", background=self.c_bg)
-        style.configure("Card.TFrame", background=self.c_card, relief="flat")
-
-        # Headings
-        style.configure("Header.TLabel", font=("Segoe UI", 16, "bold"), foreground=self.c_text, background=self.c_bg)
-        style.configure("SubHeader.TLabel", font=("Segoe UI", 8), foreground=self.c_muted, background=self.c_bg)
-        style.configure("Asset.TLabel", font=("Segoe UI", 8, "italic"), foreground=self.c_muted, background=self.c_bg)
-
-        # Stat cards
-        style.configure("StatTitle.TLabel", font=("Segoe UI", 8), foreground=self.c_muted, background=self.c_card)
-        style.configure("StatValue.TLabel", font=("Segoe UI", 14, "bold"), foreground=self.c_text, background=self.c_card)
-
-        # Buttons
-        style.configure("Primary.TButton", font=("Segoe UI", 9, "bold"), padding=6)
-        style.configure("Action.TButton", padding=5)
-        style.configure("Danger.TButton", foreground=self.c_danger, padding=5)
-
-        # Treeview styling
-        style.configure(
-            "Tasks.Treeview",
-            font=("Segoe UI", 9),
-            rowheight=28,
-            bordercolor=self.c_border,
-            background="#FFFFFF",
-            fieldbackground="#FFFFFF",
-        )
-        style.configure(
-            "Tasks.Treeview.Heading",
-            font=("Segoe UI", 9, "bold"),
-            background="#E2E8F0",
-            foreground="#334155",
-            padding=5,
-        )
-        style.map(
-            "Tasks.Treeview",
-            background=[("selected", "#DBEAFE")],
-            foreground=[("selected", "#1E3A8A")],
-        )
+        style.configure(".", font=("Segoe UI", 9))
 
     def _build_ui(self) -> None:
-        """Construct the main user interface hierarchy."""
-        main_container = ttk.Frame(self, padding="16 16 16 12")
-        main_container.pack(fill=tk.BOTH, expand=True)
+        """Construct the full modern application layout."""
+        # Main root layout container
+        self.main_container = tk.Frame(self, bg=self.theme["bg_app"])
+        self.main_container.pack(fill=tk.BOTH, expand=True)
 
-        # 1. Header & Live Dashboard
-        self._build_header(main_container)
+        # 1. Hero Header Bar & Dashboard Stats
+        self._build_header(self.main_container)
 
-        # 2. Add New Task Input Card
-        self._build_input_card(main_container)
+        # 2. Modern Quick-Create Card
+        self._build_input_card(self.main_container)
 
-        # 3. Filters & Search Toolbar
-        self._build_toolbar(main_container)
+        # 3. Interactive Filter Pills & Search Bar
+        self._build_filter_bar(self.main_container)
 
-        # 4. Tasks Treeview Table
-        self._build_treeview(main_container)
+        # 4. Scrollable Task Cards View
+        self._build_task_scroll_area(self.main_container)
 
-        # 5. Bottom Action Controls & Status Bar
-        self._build_footer(main_container)
+        # 5. Bottom Action Bar & Status Toast
+        self._build_bottom_bar(self.main_container)
 
-    def _build_header(self, parent: ttk.Frame) -> None:
-        """Build top header bar with title, asset ID, and live statistics."""
-        header_frame = ttk.Frame(parent)
-        header_frame.pack(fill=tk.X, pady=(0, 12))
+    # -------------------------------------------------------------------------
+    # UI Component Builders
+    # -------------------------------------------------------------------------
 
-        # Title block
-        title_block = ttk.Frame(header_frame)
-        title_block.pack(side=tk.LEFT)
+    def _build_header(self, parent: tk.Frame) -> None:
+        """Render hero top bar with title, asset ID, theme switch, and stat cards."""
+        t = self.theme
+        self.header_frame = tk.Frame(parent, bg=t["bg_header"], padx=24, pady=16)
+        self.header_frame.pack(fill=tk.X)
 
-        ttk.Label(title_block, text="Task Master", style="Header.TLabel").pack(anchor=tk.W)
-        sub_text = f"Production To-Do List Application • Asset ID: {ASSET_REFERENCE}"
-        ttk.Label(title_block, text=sub_text, style="Asset.TLabel").pack(anchor=tk.W)
+        # Left branding
+        brand_frame = tk.Frame(self.header_frame, bg=t["bg_header"])
+        brand_frame.pack(side=tk.LEFT)
 
-        # Stat cards block
-        stats_frame = ttk.Frame(header_frame)
-        stats_frame.pack(side=tk.RIGHT)
+        title_row = tk.Frame(brand_frame, bg=t["bg_header"])
+        title_row.pack(anchor=tk.W)
 
-        self.stat_widgets = {}
-        for title, key in [
-            ("Total Tasks", "total"),
-            ("Pending", "pending"),
-            ("Completed", "completed"),
-            ("Overdue", "overdue"),
-        ]:
-            card = ttk.Frame(stats_frame, style="Card.TFrame", padding="8 4 8 4")
-            card.pack(side=tk.LEFT, padx=4)
-            ttk.Label(card, text=title, style="StatTitle.TLabel").pack()
-            val_lbl = ttk.Label(card, text="0", style="StatValue.TLabel")
-            val_lbl.pack()
-            self.stat_widgets[key] = val_lbl
-
-        # Progress bar
-        progress_card = ttk.Frame(stats_frame, style="Card.TFrame", padding="8 4 8 4")
-        progress_card.pack(side=tk.LEFT, padx=4)
-        ttk.Label(progress_card, text="Progress", style="StatTitle.TLabel").pack()
-        self.progress_val_lbl = ttk.Label(progress_card, text="0%", font=("Segoe UI", 9, "bold"), background=self.c_card)
-        self.progress_val_lbl.pack()
-        self.progress_bar = ttk.Progressbar(progress_card, length=70, mode="determinate")
-        self.progress_bar.pack(pady=2)
-
-    def _build_input_card(self, parent: ttk.Frame) -> None:
-        """Build input form card for creating new tasks."""
-        card = ttk.Frame(parent, style="Card.TFrame", padding="12 10 12 10")
-        card.pack(fill=tk.X, pady=(0, 10))
-
-        # Top row: Title input & Add button
-        row1 = ttk.Frame(card, style="Card.TFrame")
-        row1.pack(fill=tk.X, pady=(0, 6))
-
-        ttk.Label(row1, text="New Task:", font=("Segoe UI", 9, "bold"), background=self.c_card).pack(side=tk.LEFT, padx=(0, 6))
-        self.entry_title = ttk.Entry(row1, font=("Segoe UI", 10))
-        self.entry_title.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
-        self.entry_title.bind("<Return>", lambda e: self.on_add_task())
-
-        add_btn = ttk.Button(row1, text="+ Add Task", style="Primary.TButton", command=self.on_add_task)
-        add_btn.pack(side=tk.RIGHT)
-
-        # Bottom row: Priority, Category, Due Date, Quick Dates
-        row2 = ttk.Frame(card, style="Card.TFrame")
-        row2.pack(fill=tk.X)
-
-        ttk.Label(row2, text="Priority:", background=self.c_card).pack(side=tk.LEFT, padx=(0, 4))
-        self.combo_priority = ttk.Combobox(
-            row2,
-            values=[p.value for p in Priority],
-            state="readonly",
-            width=9,
+        self.lbl_logo = tk.Label(
+            title_row,
+            text="✓",
+            font=("Segoe UI", 16, "bold"),
+            bg="#2563EB",
+            fg="#FFFFFF",
+            padx=8,
+            pady=0,
         )
-        self.combo_priority.set(Priority.MEDIUM.value)
-        self.combo_priority.pack(side=tk.LEFT, padx=(0, 12))
+        self.lbl_logo.pack(side=tk.LEFT, padx=(0, 10))
 
-        ttk.Label(row2, text="Category:", background=self.c_card).pack(side=tk.LEFT, padx=(0, 4))
+        self.lbl_title = tk.Label(
+            title_row,
+            text="TaskMaster Pro",
+            font=("Segoe UI", 16, "bold"),
+            bg=t["bg_header"],
+            fg=t["fg_header_title"],
+        )
+        self.lbl_title.pack(side=tk.LEFT)
+
+        self.lbl_asset = tk.Label(
+            brand_frame,
+            text=f"Production Task Engine • Asset: {ASSET_REFERENCE[:18]}...",
+            font=("Segoe UI", 8),
+            bg=t["bg_header"],
+            fg=t["fg_header_sub"],
+        )
+        self.lbl_asset.pack(anchor=tk.W, pady=(4, 0))
+
+        # Right side: Theme Toggle & Stat Widgets
+        right_header = tk.Frame(self.header_frame, bg=t["bg_header"])
+        right_header.pack(side=tk.RIGHT)
+
+        # Dark/Light Mode Switch
+        self.btn_theme_toggle = tk.Button(
+            right_header,
+            text="🌙 Dark Mode",
+            command=self.toggle_theme,
+            font=("Segoe UI", 8, "bold"),
+            bg=t["stat_card_bg"],
+            fg=t["fg_header_title"],
+            relief="flat",
+            padx=10,
+            pady=4,
+            cursor="hand2",
+        )
+        self.btn_theme_toggle.pack(side=tk.LEFT, padx=(0, 16))
+
+        # Live Stat Cards
+        self.stat_labels: Dict[str, tk.Label] = {}
+        for key, label in [("total", "Total"), ("pending", "Pending"), ("completed", "Done"), ("overdue", "Overdue")]:
+            card = tk.Frame(right_header, bg=t["stat_card_bg"], padx=12, pady=6)
+            card.pack(side=tk.LEFT, padx=4)
+
+            tk.Label(card, text=label, font=("Segoe UI", 7, "bold"), bg=t["stat_card_bg"], fg=t["stat_label"]).pack()
+            val_lbl = tk.Label(card, text="0", font=("Segoe UI", 13, "bold"), bg=t["stat_card_bg"], fg=t["stat_num"])
+            val_lbl.pack()
+            self.stat_labels[key] = val_lbl
+
+        # Progress Chip
+        prog_card = tk.Frame(right_header, bg=t["stat_card_bg"], padx=12, pady=6)
+        prog_card.pack(side=tk.LEFT, padx=4)
+        tk.Label(prog_card, text="Progress", font=("Segoe UI", 7, "bold"), bg=t["stat_card_bg"], fg=t["stat_label"]).pack()
+        self.lbl_progress = tk.Label(prog_card, text="0%", font=("Segoe UI", 13, "bold"), bg=t["stat_card_bg"], fg="#38BDF8")
+        self.lbl_progress.pack()
+
+    def _build_input_card(self, parent: tk.Frame) -> None:
+        """Card layout for quickly adding tasks with priority and due date."""
+        t = self.theme
+        self.input_card = tk.Frame(parent, bg=t["bg_card"], padx=18, pady=12, relief="flat", highlightthickness=1, highlightbackground=t["border"])
+        self.input_card.pack(fill=tk.X, padx=20, pady=(14, 10))
+
+        # Row 1: Task Title & Add Button
+        r1 = tk.Frame(self.input_card, bg=t["bg_card"])
+        r1.pack(fill=tk.X, pady=(0, 8))
+
+        self.entry_task_title = tk.Entry(
+            r1,
+            font=("Segoe UI", 11),
+            bg=t["bg_app"],
+            fg=t["fg_primary"],
+            insertbackground=t["fg_primary"],
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=t["border"],
+            highlightcolor=t["accent"],
+        )
+        self.entry_task_title.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=6, padx=(0, 10))
+        self.entry_task_title.bind("<Return>", lambda e: self.on_add_task())
+        self._add_placeholder(self.entry_task_title, "What needs to be done? Press Enter to save...")
+
+        self.btn_add_task = tk.Button(
+            r1,
+            text="+ Add Task",
+            command=self.on_add_task,
+            font=("Segoe UI", 10, "bold"),
+            bg=t["accent"],
+            fg=t["accent_text"],
+            activebackground=t["accent_hover"],
+            activeforeground=t["accent_text"],
+            relief="flat",
+            padx=18,
+            pady=6,
+            cursor="hand2",
+        )
+        self.btn_add_task.pack(side=tk.RIGHT)
+
+        # Row 2: Priority Pills, Category Dropdown, Due Date & Helpers
+        r2 = tk.Frame(self.input_card, bg=t["bg_card"])
+        r2.pack(fill=tk.X)
+
+        # Priority Selector Pills
+        tk.Label(r2, text="Priority:", font=("Segoe UI", 8, "bold"), bg=t["bg_card"], fg=t["fg_secondary"]).pack(side=tk.LEFT, padx=(0, 6))
+        self.priority_buttons: Dict[str, tk.Button] = {}
+        for p_name in ["Low", "Medium", "High"]:
+            btn = tk.Button(
+                r2,
+                text=p_name,
+                command=lambda p=p_name: self._set_priority_input(p),
+                font=("Segoe UI", 8),
+                relief="flat",
+                padx=8,
+                pady=2,
+                cursor="hand2",
+            )
+            btn.pack(side=tk.LEFT, padx=2)
+            self.priority_buttons[p_name] = btn
+        self._update_priority_button_styles()
+
+        # Category Dropdown
+        tk.Label(r2, text="Category:", font=("Segoe UI", 8, "bold"), bg=t["bg_card"], fg=t["fg_secondary"]).pack(side=tk.LEFT, padx=(14, 6))
         self.combo_category = ttk.Combobox(
-            row2,
+            r2,
             values=self.manager.get_categories(),
-            width=12,
+            width=11,
+            state="readonly",
         )
         self.combo_category.set(Category.WORK.value)
-        self.combo_category.pack(side=tk.LEFT, padx=(0, 12))
+        self.combo_category.pack(side=tk.LEFT, padx=(0, 14))
 
-        ttk.Label(row2, text="Due Date:", background=self.c_card).pack(side=tk.LEFT, padx=(0, 4))
-        self.entry_due_date = ttk.Entry(row2, width=12)
-        self.entry_due_date.pack(side=tk.LEFT, padx=(0, 4))
-
-        # Quick due date helper buttons
-        ttk.Button(row2, text="Today", width=6, command=self._set_due_today).pack(side=tk.LEFT, padx=2)
-        ttk.Button(row2, text="Tomorrow", width=8, command=self._set_due_tomorrow).pack(side=tk.LEFT, padx=2)
-        ttk.Button(row2, text="Clear", width=5, command=lambda: self.entry_due_date.delete(0, tk.END)).pack(side=tk.LEFT, padx=2)
-
-    def _set_due_today(self) -> None:
-        self.entry_due_date.delete(0, tk.END)
-        self.entry_due_date.insert(0, date.today().isoformat())
-
-    def _set_due_tomorrow(self) -> None:
-        self.entry_due_date.delete(0, tk.END)
-        self.entry_due_date.insert(0, (date.today() + timedelta(days=1)).isoformat())
-
-    def _build_toolbar(self, parent: ttk.Frame) -> None:
-        """Build search, filter tabs, category filter, and sort options toolbar."""
-        bar = ttk.Frame(parent)
-        bar.pack(fill=tk.X, pady=(0, 8))
-
-        # Status filter tabs (All / Pending / Completed / Overdue)
-        tabs_frame = ttk.Frame(bar)
-        tabs_frame.pack(side=tk.LEFT)
-
-        for label, val in [("All", "all"), ("Pending", "pending"), ("Completed", "completed"), ("Overdue", "overdue")]:
-            rb = ttk.Radiobutton(
-                tabs_frame,
-                text=label,
-                value=val,
-                variable=self.status_filter,
-                command=self.refresh_task_list,
-            )
-            rb.pack(side=tk.LEFT, padx=(0, 8))
-
-        # Separator
-        ttk.Separator(bar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
-
-        # Category filter dropdown
-        ttk.Label(bar, text="Category:").pack(side=tk.LEFT, padx=(0, 4))
-        self.filter_cat_combo = ttk.Combobox(
-            bar,
-            textvariable=self.category_filter,
-            values=["All"] + self.manager.get_categories(),
-            state="readonly",
+        # Due Date Entry
+        tk.Label(r2, text="Due Date:", font=("Segoe UI", 8, "bold"), bg=t["bg_card"], fg=t["fg_secondary"]).pack(side=tk.LEFT, padx=(0, 6))
+        self.entry_due_date = tk.Entry(
+            r2,
+            font=("Segoe UI", 9),
+            bg=t["bg_app"],
+            fg=t["fg_primary"],
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=t["border"],
+            highlightcolor=t["accent"],
             width=12,
         )
-        self.filter_cat_combo.set("All")
-        self.filter_cat_combo.pack(side=tk.LEFT, padx=(0, 12))
-        self.filter_cat_combo.bind("<<ComboboxSelected>>", lambda e: self.refresh_task_list())
+        self.entry_due_date.pack(side=tk.LEFT, ipady=3, padx=(0, 6))
 
-        # Sort selector
-        ttk.Label(bar, text="Sort By:").pack(side=tk.LEFT, padx=(0, 4))
-        sort_combo = ttk.Combobox(
-            bar,
-            textvariable=self.sort_by,
+        # Quick Date buttons
+        for label, delta_days in [("Today", 0), ("Tomorrow", 1), ("+7 Days", 7)]:
+            tk.Button(
+                r2,
+                text=label,
+                command=lambda d=delta_days: self._set_quick_date(d),
+                font=("Segoe UI", 7),
+                bg=t["bg_app"],
+                fg=t["fg_secondary"],
+                relief="flat",
+                padx=5,
+                pady=2,
+                cursor="hand2",
+            ).pack(side=tk.LEFT, padx=1)
+
+        tk.Button(
+            r2,
+            text="✕",
+            command=lambda: self.entry_due_date.delete(0, tk.END),
+            font=("Segoe UI", 7),
+            bg=t["bg_app"],
+            fg=t["fg_muted"],
+            relief="flat",
+            padx=4,
+            pady=2,
+            cursor="hand2",
+        ).pack(side=tk.LEFT, padx=(2, 0))
+
+    def _set_priority_input(self, priority: str) -> None:
+        self.selected_priority_input = priority
+        self._update_priority_button_styles()
+
+    def _update_priority_button_styles(self) -> None:
+        t = self.theme
+        for name, btn in self.priority_buttons.items():
+            if name == self.selected_priority_input:
+                if name == "High":
+                    btn.configure(bg=t["pri_high_bg"], fg=t["pri_high_fg"], font=("Segoe UI", 8, "bold"))
+                elif name == "Medium":
+                    btn.configure(bg=t["pri_med_bg"], fg=t["pri_med_fg"], font=("Segoe UI", 8, "bold"))
+                else:
+                    btn.configure(bg=t["pri_low_bg"], fg=t["pri_low_fg"], font=("Segoe UI", 8, "bold"))
+            else:
+                btn.configure(bg=t["bg_app"], fg=t["fg_muted"], font=("Segoe UI", 8))
+
+    def _set_quick_date(self, days_ahead: int) -> None:
+        target_date = (date.today() + timedelta(days=days_ahead)).isoformat()
+        self.entry_due_date.delete(0, tk.END)
+        self.entry_due_date.insert(0, target_date)
+
+    def _add_placeholder(self, entry: tk.Entry, placeholder: str) -> None:
+        """Add modern auto-clearing placeholder to an entry field."""
+        def on_focus_in(event: tk.Event) -> None:
+            if entry.get() == placeholder:
+                entry.delete(0, tk.END)
+                entry.configure(fg=self.theme["fg_primary"])
+
+        def on_focus_out(event: tk.Event) -> None:
+            if not entry.get().strip():
+                entry.delete(0, tk.END)
+                entry.insert(0, placeholder)
+                entry.configure(fg=self.theme["fg_muted"])
+
+        entry.insert(0, placeholder)
+        entry.configure(fg=self.theme["fg_muted"])
+        entry.bind("<FocusIn>", on_focus_in)
+        entry.bind("<FocusOut>", on_focus_out)
+
+    def _build_filter_bar(self, parent: tk.Frame) -> None:
+        """Construct segmented status filter pills and search bar."""
+        t = self.theme
+        self.filter_bar = tk.Frame(parent, bg=t["bg_app"], padx=20)
+        self.filter_bar.pack(fill=tk.X, pady=(4, 8))
+
+        # Filter Pills container
+        pills_frame = tk.Frame(self.filter_bar, bg=t["bg_app"])
+        pills_frame.pack(side=tk.LEFT)
+
+        filters = [("all", "All Tasks"), ("pending", "Active"), ("completed", "Completed"), ("overdue", "Overdue")]
+        for key, label in filters:
+            btn = tk.Button(
+                pills_frame,
+                text=label,
+                command=lambda k=key: self._set_status_filter(k),
+                font=("Segoe UI", 8, "bold" if key == "all" else "normal"),
+                relief="flat",
+                padx=10,
+                pady=4,
+                cursor="hand2",
+            )
+            btn.pack(side=tk.LEFT, padx=(0, 4))
+            self.filter_buttons[key] = btn
+        self._update_filter_button_styles()
+
+        # Category Filter Dropdown
+        tk.Label(self.filter_bar, text="Category:", font=("Segoe UI", 8, "bold"), bg=t["bg_app"], fg=t["fg_secondary"]).pack(side=tk.LEFT, padx=(12, 4))
+        self.filter_cat_combo = ttk.Combobox(
+            self.filter_bar,
+            values=["All"] + self.manager.get_categories(),
+            state="readonly",
+            width=11,
+        )
+        self.filter_cat_combo.set("All")
+        self.filter_cat_combo.pack(side=tk.LEFT, padx=(0, 10))
+        self.filter_cat_combo.bind("<<ComboboxSelected>>", lambda e: self.refresh_task_cards())
+
+        # Sort Dropdown
+        tk.Label(self.filter_bar, text="Sort:", font=("Segoe UI", 8, "bold"), bg=t["bg_app"], fg=t["fg_secondary"]).pack(side=tk.LEFT, padx=(0, 4))
+        self.combo_sort = ttk.Combobox(
+            self.filter_bar,
             values=["Newest First", "Due Date", "Priority", "Title"],
             state="readonly",
             width=12,
         )
-        sort_combo.set("Newest First")
-        sort_combo.pack(side=tk.LEFT, padx=(0, 12))
-        sort_combo.bind("<<ComboboxSelected>>", lambda e: self.refresh_task_list())
+        self.combo_sort.set("Newest First")
+        self.combo_sort.pack(side=tk.LEFT, padx=(0, 10))
+        self.combo_sort.bind("<<ComboboxSelected>>", lambda e: self.refresh_task_cards())
 
-        # Search box (instant filter as user types)
-        search_frame = ttk.Frame(bar)
+        # Search Bar
+        search_frame = tk.Frame(self.filter_bar, bg=t["bg_app"])
         search_frame.pack(side=tk.RIGHT)
 
-        ttk.Label(search_frame, text="🔍 Search:").pack(side=tk.LEFT, padx=(0, 4))
-        self.entry_search = ttk.Entry(search_frame, textvariable=self.search_query, width=16)
-        self.entry_search.pack(side=tk.LEFT)
-        self.entry_search.bind("<KeyRelease>", lambda e: self.refresh_task_list())
+        tk.Label(search_frame, text="🔍", font=("Segoe UI", 9), bg=t["bg_app"], fg=t["fg_muted"]).pack(side=tk.LEFT, padx=(0, 4))
+        self.entry_search = tk.Entry(
+            search_frame,
+            textvariable=self.search_text,
+            font=("Segoe UI", 9),
+            bg=t["bg_card"],
+            fg=t["fg_primary"],
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=t["border"],
+            highlightcolor=t["accent"],
+            width=18,
+        )
+        self.entry_search.pack(side=tk.LEFT, ipady=3)
+        self.entry_search.bind("<KeyRelease>", lambda e: self.refresh_task_cards())
 
-    def _build_treeview(self, parent: ttk.Frame) -> None:
-        """Build tasks table with columns, scrollbar, and tag color mappings."""
-        table_container = ttk.Frame(parent)
-        table_container.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+        # Clear search button
+        tk.Button(
+            search_frame,
+            text="✕",
+            command=self._clear_search,
+            font=("Segoe UI", 7),
+            bg=t["bg_app"],
+            fg=t["fg_muted"],
+            relief="flat",
+            padx=4,
+            pady=2,
+            cursor="hand2",
+        ).pack(side=tk.LEFT, padx=(2, 0))
 
-        columns = ("status", "title", "priority", "category", "due_date", "created_at")
-        self.tree = ttk.Treeview(
-            table_container,
-            columns=columns,
-            show="headings",
-            style="Tasks.Treeview",
-            selectmode="extended",
+    def _clear_search(self) -> None:
+        self.search_text.set("")
+        self.refresh_task_cards()
+
+    def _set_status_filter(self, status: str) -> None:
+        self.current_status_filter = status
+        self._update_filter_button_styles()
+        self.refresh_task_cards()
+
+    def _update_filter_button_styles(self) -> None:
+        t = self.theme
+        for key, btn in self.filter_buttons.items():
+            if key == self.current_status_filter:
+                btn.configure(bg=t["accent"], fg=t["accent_text"], font=("Segoe UI", 8, "bold"))
+            else:
+                btn.configure(bg=t["bg_card"], fg=t["fg_secondary"], font=("Segoe UI", 8))
+
+    def _build_task_scroll_area(self, parent: tk.Frame) -> None:
+        """Build smooth scrollable cards container."""
+        t = self.theme
+        self.cards_outer = tk.Frame(parent, bg=t["bg_app"], padx=20)
+        self.cards_outer.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        # Canvas with mousewheel scrolling
+        self.canvas = tk.Canvas(self.cards_outer, bg=t["bg_app"], highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(self.cards_outer, orient=tk.VERTICAL, command=self.canvas.yview)
+        self.scrollable_frame = tk.Frame(self.canvas, bg=t["bg_app"])
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")),
         )
 
-        # Configure columns
-        self.tree.heading("status", text="Status", anchor=tk.CENTER)
-        self.tree.heading("title", text="Task Title", anchor=tk.W)
-        self.tree.heading("priority", text="Priority", anchor=tk.CENTER)
-        self.tree.heading("category", text="Category", anchor=tk.CENTER)
-        self.tree.heading("due_date", text="Due Date", anchor=tk.CENTER)
-        self.tree.heading("created_at", text="Created", anchor=tk.CENTER)
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        self.tree.column("status", width=95, minwidth=80, anchor=tk.CENTER, stretch=False)
-        self.tree.column("title", width=360, minwidth=180, anchor=tk.W)
-        self.tree.column("priority", width=90, minwidth=70, anchor=tk.CENTER, stretch=False)
-        self.tree.column("category", width=110, minwidth=80, anchor=tk.CENTER, stretch=False)
-        self.tree.column("due_date", width=110, minwidth=90, anchor=tk.CENTER, stretch=False)
-        self.tree.column("created_at", width=130, minwidth=100, anchor=tk.CENTER, stretch=False)
+        # Make scrollable frame expand width with canvas
+        self.canvas.bind(
+            "<Configure>",
+            lambda e: self.canvas.itemconfig(self.canvas_window, width=e.width),
+        )
 
-        # Scrollbar
-        scrollbar = ttk.Scrollbar(table_container, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
+        # Mousewheel binding
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Row styling tags
-        self.tree.tag_configure("completed", foreground="#94A3B8")
-        self.tree.tag_configure("priority_high", foreground="#DC2626")
-        self.tree.tag_configure("priority_medium", foreground="#D97706")
-        self.tree.tag_configure("priority_low", foreground="#16A34A")
-        self.tree.tag_configure("overdue", background="#FEE2E2", foreground="#991B1B")
+    def _on_mousewheel(self, event: tk.Event) -> None:
+        if self.canvas.winfo_exists():
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
-        # Double click to toggle or edit
-        self.tree.bind("<Double-1>", lambda e: self.on_toggle_selected())
-        self.tree.bind("<Return>", lambda e: self.on_toggle_selected())
-        self.tree.bind("<Delete>", lambda e: self.on_delete_task())
+    def _build_bottom_bar(self, parent: tk.Frame) -> None:
+        """Footer with bulk actions and status toast."""
+        t = self.theme
+        self.bottom_bar = tk.Frame(parent, bg=t["bg_header"], padx=20, pady=8)
+        self.bottom_bar.pack(fill=tk.X)
 
-        # Context menu
-        self.context_menu = tk.Menu(self, tearoff=0)
-        self.context_menu.add_command(label="Toggle Status (Complete/Pending)", command=self.on_toggle_selected)
-        self.context_menu.add_command(label="Edit Task...", command=self.on_edit_task)
-        self.context_menu.add_separator()
-        self.context_menu.add_command(label="Delete Task", command=self.on_delete_task)
-        self.tree.bind("<Button-3>", self._show_context_menu)
+        # Status Toast Message
+        self.lbl_status = tk.Label(
+            self.bottom_bar,
+            text="Ready. Click any checkbox or card to complete a task.",
+            font=("Segoe UI", 8),
+            bg=t["bg_header"],
+            fg=t["fg_header_sub"],
+        )
+        self.lbl_status.pack(side=tk.LEFT)
 
-    def _show_context_menu(self, event: tk.Event) -> None:
-        """Display right-click context menu on selected item."""
-        item = self.tree.identify_row(event.y)
-        if item:
-            if item not in self.tree.selection():
-                self.tree.selection_set(item)
-            self.context_menu.post(event.x_root, event.y_root)
+        # Right Action Buttons
+        btn_box = tk.Frame(self.bottom_bar, bg=t["bg_header"])
+        btn_box.pack(side=tk.RIGHT)
 
-    def _build_footer(self, parent: ttk.Frame) -> None:
-        """Build action buttons bar and application status bar."""
-        actions_bar = ttk.Frame(parent)
-        actions_bar.pack(fill=tk.X, pady=(0, 6))
+        tk.Button(
+            btn_box,
+            text="Clear Completed",
+            command=self.on_clear_completed,
+            font=("Segoe UI", 8),
+            bg=t["stat_card_bg"],
+            fg=t["fg_header_title"],
+            relief="flat",
+            padx=10,
+            pady=3,
+            cursor="hand2",
+        ).pack(side=tk.LEFT, padx=4)
 
-        # Left action buttons
-        ttk.Button(actions_bar, text="✓ Toggle Complete", style="Action.TButton", command=self.on_toggle_selected).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(actions_bar, text="✎ Edit Task", style="Action.TButton", command=self.on_edit_task).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(actions_bar, text="🗑 Delete", style="Danger.TButton", command=self.on_delete_task).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(actions_bar, text="Clear Completed", style="Action.TButton", command=self.on_clear_completed).pack(side=tk.LEFT, padx=(0, 6))
-
-        # Right action buttons
-        ttk.Button(actions_bar, text="Export CSV", style="Action.TButton", command=self.on_export_csv).pack(side=tk.RIGHT)
-        ttk.Button(actions_bar, text="Reload", style="Action.TButton", command=self.on_reload).pack(side=tk.RIGHT, padx=(0, 6))
-
-        # Status Bar
-        status_bar = ttk.Frame(parent)
-        status_bar.pack(fill=tk.X)
-
-        self.status_var = tk.StringVar(value="Ready. Double-click any task to toggle completion.")
-        ttk.Label(status_bar, textvariable=self.status_var, style="SubHeader.TLabel").pack(side=tk.LEFT)
-
-        file_note = f"File: {self.manager.storage.file_path.name}"
-        ttk.Label(status_bar, text=file_note, style="SubHeader.TLabel").pack(side=tk.RIGHT)
-
-    def _bind_shortcuts(self) -> None:
-        """Bind productivity keyboard shortcuts."""
-        self.bind("<Control-n>", lambda e: self.entry_title.focus_set())
-        self.bind("<Control-f>", lambda e: self.entry_search.focus_set())
-        self.bind("<Control-e>", lambda e: self.on_edit_task())
-        self.bind("<space>", self._on_space_pressed)
-
-    def _on_space_pressed(self, event: tk.Event) -> Optional[str]:
-        """Toggle task on Spacebar if focused on the treeview."""
-        if self.focus_get() == self.tree:
-            self.on_toggle_selected()
-            return "break"
-        return None
+        tk.Button(
+            btn_box,
+            text="Export CSV",
+            command=self.on_export_csv,
+            font=("Segoe UI", 8),
+            bg=t["stat_card_bg"],
+            fg=t["fg_header_title"],
+            relief="flat",
+            padx=10,
+            pady=3,
+            cursor="hand2",
+        ).pack(side=tk.LEFT, padx=4)
 
     # -------------------------------------------------------------------------
-    # UI Actions & Event Handlers
+    # Task Rendering: Modern Cards View
+    # -------------------------------------------------------------------------
+
+    def refresh_task_cards(self) -> None:
+        """Fetch filtered tasks and generate modern visual cards in scrollable frame."""
+        t = self.theme
+        # Destroy existing cards
+        for widget in self.scrollable_frame.winfo_children():
+            widget.destroy()
+
+        sort_map = {
+            "Newest First": "created_desc",
+            "Due Date": "due_date",
+            "Priority": "priority",
+            "Title": "title",
+        }
+        sort_key = sort_map.get(self.combo_sort.get(), "created_desc")
+
+        tasks = self.manager.filter_tasks(
+            status=self.current_status_filter,
+            category=self.filter_cat_combo.get(),
+            search_query=self.search_text.get(),
+            sort_by=sort_key,
+        )
+
+        # Empty State
+        if not tasks:
+            self._render_empty_state()
+            self._update_stats_dashboard()
+            return
+
+        # Render each task as an interactive Card
+        for task in tasks:
+            self._create_task_card(task)
+
+        # Update stats
+        self._update_stats_dashboard()
+
+    def _render_empty_state(self) -> None:
+        """Render a friendly, clean empty-state graphic when no tasks match."""
+        t = self.theme
+        empty_box = tk.Frame(self.scrollable_frame, bg=t["bg_app"], pady=60)
+        empty_box.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(
+            empty_box,
+            text="🎉",
+            font=("Segoe UI", 36),
+            bg=t["bg_app"],
+        ).pack(pady=(0, 6))
+
+        tk.Label(
+            empty_box,
+            text="All caught up!",
+            font=("Segoe UI", 14, "bold"),
+            bg=t["bg_app"],
+            fg=t["fg_primary"],
+        ).pack()
+
+        tk.Label(
+            empty_box,
+            text="No tasks match your current filter. Enjoy your day or add a new task above.",
+            font=("Segoe UI", 9),
+            bg=t["bg_app"],
+            fg=t["fg_muted"],
+        ).pack(pady=(4, 0))
+
+    def _create_task_card(self, task: Task) -> None:
+        """Render an individual interactive task card."""
+        t = self.theme
+        card_bg = t["bg_card_done"] if task.completed else t["bg_card"]
+        card = tk.Frame(
+            self.scrollable_frame,
+            bg=card_bg,
+            padx=14,
+            pady=10,
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=t["border"],
+        )
+        card.pack(fill=tk.X, pady=4)
+
+        # 1. Custom Checkbox button
+        check_symbol = "✔" if task.completed else ""
+        chk_bg = t["check_active_bg"] if task.completed else card_bg
+        chk_fg = t["check_active_fg"] if task.completed else t["fg_primary"]
+
+        chk_btn = tk.Button(
+            card,
+            text=check_symbol,
+            command=lambda tid=task.id: self.on_toggle_task(tid),
+            font=("Segoe UI", 10, "bold"),
+            bg=chk_bg,
+            fg=chk_fg,
+            activebackground=t["check_active_bg"],
+            activeforeground="#FFFFFF",
+            relief="solid",
+            bd=1,
+            width=2,
+            height=1,
+            cursor="hand2",
+        )
+        chk_btn.pack(side=tk.LEFT, padx=(0, 12))
+
+        # 2. Main Task Details Block
+        details = tk.Frame(card, bg=card_bg)
+        details.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Title row
+        title_font = ("Segoe UI", 10, "overstrike" if task.completed else "bold")
+        title_fg = t["fg_muted"] if task.completed else t["fg_primary"]
+
+        title_lbl = tk.Label(
+            details,
+            text=task.title,
+            font=title_font,
+            bg=card_bg,
+            fg=title_fg,
+            anchor=tk.W,
+        )
+        title_lbl.pack(anchor=tk.W)
+
+        # Badges row: Priority Pill, Category, Due Date, Timestamp
+        badges = tk.Frame(details, bg=card_bg)
+        badges.pack(anchor=tk.W, pady=(4, 0))
+
+        # Priority Pill
+        if task.priority == Priority.HIGH:
+            pri_bg, pri_fg = t["pri_high_bg"], t["pri_high_fg"]
+        elif task.priority == Priority.LOW:
+            pri_bg, pri_fg = t["pri_low_bg"], t["pri_low_fg"]
+        else:
+            pri_bg, pri_fg = t["pri_med_bg"], t["pri_med_fg"]
+
+        tk.Label(
+            badges,
+            text=f"● {task.priority.value.upper()}",
+            font=("Segoe UI", 7, "bold"),
+            bg=pri_bg,
+            fg=pri_fg,
+            padx=6,
+            pady=1,
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        # Category Pill
+        tk.Label(
+            badges,
+            text=task.category,
+            font=("Segoe UI", 7),
+            bg=t["cat_bg"],
+            fg=t["cat_fg"],
+            padx=6,
+            pady=1,
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        # Due Date Pill
+        if task.due_date:
+            if task.completed:
+                due_bg, due_fg = t["cat_bg"], t["fg_muted"]
+                due_prefix = "📅"
+            elif task.is_overdue():
+                due_bg, due_fg = t["due_overdue_bg"], t["due_overdue_fg"]
+                due_prefix = "⚠️ Overdue:"
+            elif task.due_date == date.today().isoformat():
+                due_bg, due_fg = t["due_today_bg"], t["due_today_fg"]
+                due_prefix = "⏰ Due Today:"
+            else:
+                due_bg, due_fg = t["due_normal_bg"], t["due_normal_fg"]
+                due_prefix = "📅"
+
+            tk.Label(
+                badges,
+                text=f"{due_prefix} {task.due_date}",
+                font=("Segoe UI", 7, "bold" if task.is_overdue() else "normal"),
+                bg=due_bg,
+                fg=due_fg,
+                padx=6,
+                pady=1,
+            ).pack(side=tk.LEFT, padx=(0, 6))
+
+        # Optional Description snippet
+        if task.description:
+            tk.Label(
+                details,
+                text=task.description[:80] + ("..." if len(task.description) > 80 else ""),
+                font=("Segoe UI", 8),
+                bg=card_bg,
+                fg=t["fg_muted"],
+                anchor=tk.W,
+            ).pack(anchor=tk.W, pady=(2, 0))
+
+        # 3. Action Buttons on Right (Edit, Delete)
+        actions = tk.Frame(card, bg=card_bg)
+        actions.pack(side=tk.RIGHT)
+
+        tk.Button(
+            actions,
+            text="✎ Edit",
+            command=lambda tid=task.id: self.on_edit_task(tid),
+            font=("Segoe UI", 8),
+            bg=card_bg,
+            fg=t["fg_secondary"],
+            relief="flat",
+            padx=8,
+            pady=4,
+            cursor="hand2",
+        ).pack(side=tk.LEFT, padx=2)
+
+        tk.Button(
+            actions,
+            text="🗑 Delete",
+            command=lambda tid=task.id: self.on_delete_task(tid),
+            font=("Segoe UI", 8),
+            bg=card_bg,
+            fg="#EF4444",
+            relief="flat",
+            padx=8,
+            pady=4,
+            cursor="hand2",
+        ).pack(side=tk.LEFT, padx=2)
+
+        # Hover Effect
+        def on_enter(e: tk.Event) -> None:
+            if not task.completed:
+                card.configure(bg=t["bg_card_hover"])
+                details.configure(bg=t["bg_card_hover"])
+                title_lbl.configure(bg=t["bg_card_hover"])
+                badges.configure(bg=t["bg_card_hover"])
+                actions.configure(bg=t["bg_card_hover"])
+
+        def on_leave(e: tk.Event) -> None:
+            if not task.completed:
+                card.configure(bg=card_bg)
+                details.configure(bg=card_bg)
+                title_lbl.configure(bg=card_bg)
+                badges.configure(bg=card_bg)
+                actions.configure(bg=card_bg)
+
+        card.bind("<Enter>", on_enter)
+        card.bind("<Leave>", on_leave)
+
+    def _update_stats_dashboard(self) -> None:
+        """Update numbers and progress bar based on manager calculations."""
+        stats = self.manager.get_stats()
+        self.stat_labels["total"].config(text=str(stats["total"]))
+        self.stat_labels["pending"].config(text=str(stats["pending"]))
+        self.stat_labels["completed"].config(text=str(stats["completed"]))
+        self.stat_labels["overdue"].config(text=str(stats["overdue"]))
+
+        rate = stats["completion_rate"]
+        self.lbl_progress.config(text=f"{int(rate)}%")
+
+    # -------------------------------------------------------------------------
+    # Theme Toggle Logic
+    # -------------------------------------------------------------------------
+
+    def toggle_theme(self) -> None:
+        """Switch smoothly between Dark and Light mode."""
+        self.theme_mode = "dark" if self.theme_mode == "light" else "light"
+        self.theme = THEMES[self.theme_mode]
+        t = self.theme
+
+        self.configure(bg=t["bg_app"])
+        self.main_container.configure(bg=t["bg_app"])
+        self.header_frame.configure(bg=t["bg_header"])
+        self.lbl_title.configure(bg=t["bg_header"], fg=t["fg_header_title"])
+        self.lbl_asset.configure(bg=t["bg_header"], fg=t["fg_header_sub"])
+        self.btn_theme_toggle.configure(
+            text="☀️ Light Mode" if self.theme_mode == "dark" else "🌙 Dark Mode",
+            bg=t["stat_card_bg"],
+            fg=t["fg_header_title"],
+        )
+
+        for card in self.stat_labels.values():
+            parent_card = card.master
+            parent_card.configure(bg=t["stat_card_bg"])
+            card.configure(bg=t["stat_card_bg"], fg=t["stat_num"])
+            # Update label in same card
+            for child in parent_card.winfo_children():
+                if child != card:
+                    child.configure(bg=t["stat_card_bg"], fg=t["stat_label"])
+
+        self.lbl_progress.master.configure(bg=t["stat_card_bg"])
+        self.lbl_progress.configure(bg=t["stat_card_bg"])
+        for child in self.lbl_progress.master.winfo_children():
+            if child != self.lbl_progress:
+                child.configure(bg=t["stat_card_bg"], fg=t["stat_label"])
+
+        # Input card
+        self.input_card.configure(bg=t["bg_card"], highlightbackground=t["border"])
+        self.input_card.master.configure(bg=t["bg_app"])
+        self.entry_task_title.configure(bg=t["bg_app"], fg=t["fg_primary"], insertbackground=t["fg_primary"], highlightbackground=t["border"])
+        self.entry_due_date.configure(bg=t["bg_app"], fg=t["fg_primary"], insertbackground=t["fg_primary"], highlightbackground=t["border"])
+        self.btn_add_task.configure(bg=t["accent"], fg=t["accent_text"], activebackground=t["accent_hover"])
+        self._update_priority_button_styles()
+
+        # Filter bar
+        self.filter_bar.configure(bg=t["bg_app"])
+        self.entry_search.configure(bg=t["bg_card"], fg=t["fg_primary"], insertbackground=t["fg_primary"], highlightbackground=t["border"])
+        self._update_filter_button_styles()
+
+        # Cards area
+        self.cards_outer.configure(bg=t["bg_app"])
+        self.canvas.configure(bg=t["bg_app"])
+        self.scrollable_frame.configure(bg=t["bg_app"])
+
+        # Bottom bar
+        self.bottom_bar.configure(bg=t["bg_header"])
+        self.lbl_status.configure(bg=t["bg_header"], fg=t["fg_header_sub"])
+
+        self.refresh_task_cards()
+
+    # -------------------------------------------------------------------------
+    # Core Operations (CRUD)
     # -------------------------------------------------------------------------
 
     def on_add_task(self) -> None:
-        """Handle submission of a new task."""
-        title = self.entry_title.get().strip()
+        """Add new task with validation."""
+        title = self.entry_task_title.get().strip()
+        placeholder = "What needs to be done? Press Enter to save..."
 
-        # Input validation: preventing empty task submissions
-        if not title:
+        if not title or title == placeholder:
             messagebox.showwarning(
                 "Input Required",
-                "Task title cannot be empty! Please provide a description for the task.",
+                "Task title cannot be empty! Please provide a name for your task.",
                 parent=self,
             )
-            self.entry_title.focus_set()
+            self.entry_task_title.focus_set()
             return
 
-        priority = self.combo_priority.get()
-        category = self.combo_category.get().strip() or Category.OTHER.value
+        priority = self.selected_priority_input
+        category = self.combo_category.get().strip() or Category.WORK.value
         due_date = self.entry_due_date.get().strip() or None
 
         try:
@@ -561,90 +1247,60 @@ class TodoAppGUI(tk.Tk):
                 category=category,
                 due_date=due_date,
             )
-            # Clear input fields
-            self.entry_title.delete(0, tk.END)
+            self.entry_task_title.delete(0, tk.END)
             self.entry_due_date.delete(0, tk.END)
-            self.status_var.set(f"Added task: '{task.title}'")
-            self.refresh_task_list()
-        except ValidationError as e:
-            messagebox.showerror("Invalid Input", str(e), parent=self)
+            self.lbl_status.config(text=f"Task added: '{task.title}'")
+            self.refresh_task_cards()
+        except ValidationError as err:
+            messagebox.showerror("Validation Error", str(err), parent=self)
 
-    def on_toggle_selected(self) -> None:
-        """Toggle completion status for selected task(s)."""
-        selected_ids = self.tree.selection()
-        if not selected_ids:
-            self.status_var.set("Please select a task to toggle.")
-            return
+    def on_toggle_task(self, task_id: str) -> None:
+        """Toggle completion status for task."""
+        try:
+            task = self.manager.toggle_task(task_id)
+            state = "completed 🎉" if task.completed else "active"
+            self.lbl_status.config(text=f"Task '{task.title}' marked as {state}.")
+            self.refresh_task_cards()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to toggle task: {e}", parent=self)
 
-        for task_id in selected_ids:
-            try:
-                task = self.manager.toggle_task(task_id)
-                status = "completed" if task.completed else "reopened"
-                self.status_var.set(f"Task '{task.title}' marked as {status}.")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to toggle task: {e}", parent=self)
-
-        self.refresh_task_list()
-
-    def on_edit_task(self) -> None:
-        """Open the modal edit dialog for the currently selected task."""
-        selected_ids = self.tree.selection()
-        if not selected_ids:
-            messagebox.showinfo("Select Task", "Please select a task from the list to edit.", parent=self)
-            return
-
-        task_id = selected_ids[0]
+    def on_edit_task(self, task_id: str) -> None:
+        """Open modern edit dialog."""
         try:
             task = self.manager.get_task(task_id)
-            dialog = EditTaskDialog(self, task, self.manager)
+            dialog = EditTaskDialog(self, task, self.manager, theme_mode=self.theme_mode)
             self.wait_window(dialog)
             if dialog.saved:
-                self.status_var.set(f"Task '{task.title}' updated successfully.")
-                self.refresh_task_list()
+                self.lbl_status.config(text=f"Task '{task.title}' updated successfully.")
+                self.refresh_task_cards()
         except Exception as e:
-            messagebox.showerror("Error", f"Could not load task: {e}", parent=self)
+            messagebox.showerror("Error", f"Failed to open edit dialog: {e}", parent=self)
 
-    def on_delete_task(self) -> None:
-        """Delete selected task(s) after user confirmation."""
-        selected_ids = self.tree.selection()
-        if not selected_ids:
-            messagebox.showinfo("Select Task", "Please select a task from the list to delete.", parent=self)
-            return
-
-        count = len(selected_ids)
-        msg = f"Are you sure you want to delete {count} selected task(s)?" if count > 1 else "Are you sure you want to delete this task?"
-        if not messagebox.askyesno("Confirm Delete", msg, parent=self):
-            return
-
-        for task_id in selected_ids:
-            try:
+    def on_delete_task(self, task_id: str) -> None:
+        """Delete task after prompt confirmation."""
+        try:
+            task = self.manager.get_task(task_id)
+            if messagebox.askyesno("Confirm Delete", f"Delete task '{task.title}'?", parent=self):
                 self.manager.delete_task(task_id)
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to delete task: {e}", parent=self)
-
-        self.status_var.set(f"Deleted {count} task(s).")
-        self.refresh_task_list()
+                self.lbl_status.config(text=f"Deleted task '{task.title}'.")
+                self.refresh_task_cards()
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not delete task: {e}", parent=self)
 
     def on_clear_completed(self) -> None:
-        """Remove all completed tasks after confirmation."""
+        """Remove all completed tasks."""
         stats = self.manager.get_stats()
         if stats["completed"] == 0:
-            messagebox.showinfo("Info", "There are no completed tasks to clear.", parent=self)
+            messagebox.showinfo("Clear Completed", "No completed tasks to clear.", parent=self)
             return
 
         if messagebox.askyesno("Clear Completed", f"Delete all {stats['completed']} completed task(s)?", parent=self):
             removed = self.manager.clear_completed()
-            self.status_var.set(f"Cleared {removed} completed task(s).")
-            self.refresh_task_list()
-
-    def on_reload(self) -> None:
-        """Reload tasks from disk."""
-        self.manager.load()
-        self.status_var.set("Tasks reloaded from file.")
-        self.refresh_task_list()
+            self.lbl_status.config(text=f"Cleared {removed} completed task(s).")
+            self.refresh_task_cards()
 
     def on_export_csv(self) -> None:
-        """Export current tasks to a user-chosen CSV file."""
+        """Export tasks into a CSV file."""
         tasks = self.manager.get_all_tasks()
         if not tasks:
             messagebox.showinfo("Export", "No tasks available to export.", parent=self)
@@ -662,100 +1318,19 @@ class TodoAppGUI(tk.Tk):
 
         try:
             self.manager.storage.export_csv(tasks, dest)
-            messagebox.showinfo("Export Successful", f"Successfully exported {len(tasks)} tasks to:\n{dest}", parent=self)
-            self.status_var.set(f"Exported to {os.path.basename(dest)}")
+            messagebox.showinfo("Export Successful", f"Exported {len(tasks)} tasks to:\n{dest}", parent=self)
+            self.lbl_status.config(text=f"Exported to {os.path.basename(dest)}")
         except Exception as e:
-            messagebox.showerror("Export Failed", f"Could not export file: {e}", parent=self)
+            messagebox.showerror("Export Failed", f"Could not export CSV: {e}", parent=self)
 
-    # -------------------------------------------------------------------------
-    # Render & Refresh Logic
-    # -------------------------------------------------------------------------
-
-    def refresh_task_list(self) -> None:
-        """Query manager with current filters and update the treeview & dashboard stats."""
-        # Map sort label to manager parameter
-        sort_map = {
-            "Newest First": "created_desc",
-            "Due Date": "due_date",
-            "Priority": "priority",
-            "Title": "title",
-        }
-        sort_key = sort_map.get(self.sort_by.get(), "created_desc")
-
-        tasks = self.manager.filter_tasks(
-            status=self.status_filter.get(),
-            category=self.category_filter.get(),
-            search_query=self.search_query.get(),
-            sort_by=sort_key,
-        )
-
-        # Preserve selection if still visible
-        selected = set(self.tree.selection())
-
-        # Clear existing rows
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-
-        for task in tasks:
-            status_symbol = "✔ Done" if task.completed else "⭕ Active"
-            tags = []
-
-            if task.completed:
-                tags.append("completed")
-            elif task.is_overdue():
-                tags.append("overdue")
-            elif task.priority == Priority.HIGH:
-                tags.append("priority_high")
-            elif task.priority == Priority.MEDIUM:
-                tags.append("priority_medium")
-            elif task.priority == Priority.LOW:
-                tags.append("priority_low")
-
-            created_display = task.created_at[:16].replace("T", " ")
-            due_display = task.due_date if task.due_date else "—"
-
-            self.tree.insert(
-                "",
-                tk.END,
-                iid=task.id,
-                values=(
-                    status_symbol,
-                    task.title,
-                    task.priority.value,
-                    task.category,
-                    due_display,
-                    created_display,
-                ),
-                tags=tuple(tags),
-            )
-
-        # Restore selection
-        for task_id in selected:
-            if self.tree.exists(task_id):
-                self.tree.selection_add(task_id)
-
-        # Update category dropdown lists
-        all_cats = ["All"] + self.manager.get_categories()
-        self.filter_cat_combo["values"] = all_cats
-        self.combo_category["values"] = self.manager.get_categories()
-
-        # Update stat dashboard
-        self._update_stats_dashboard()
-
-    def _update_stats_dashboard(self) -> None:
-        """Update stat numbers and progress bar based on current data."""
-        stats = self.manager.get_stats()
-        self.stat_widgets["total"].config(text=str(stats["total"]))
-        self.stat_widgets["pending"].config(text=str(stats["pending"]))
-        self.stat_widgets["completed"].config(text=str(stats["completed"]))
-        self.stat_widgets["overdue"].config(text=str(stats["overdue"]))
-
-        rate = stats["completion_rate"]
-        self.progress_val_lbl.config(text=f"{int(rate)}%")
-        self.progress_bar["value"] = rate
+    def _bind_shortcuts(self) -> None:
+        """Keyboard productivity shortcuts."""
+        self.bind("<Control-n>", lambda e: self.entry_task_title.focus_set())
+        self.bind("<Control-f>", lambda e: self.entry_search.focus_set())
+        self.bind("<Control-d>", lambda e: self.toggle_theme())
 
 
 def launch_gui() -> None:
-    """Entry point function to instantiate and run the Tkinter GUI."""
+    """Entry point for running the GUI."""
     app = TodoAppGUI()
     app.mainloop()
